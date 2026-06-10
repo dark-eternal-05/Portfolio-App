@@ -55,22 +55,44 @@ export default function ApplicationForm({
     const value = e.target.value;
     setCategoriesText(value);
 
+    const seen = new Set<string>();
+
+    const categories = value
+      .split(",")
+      .map((category) => category.trim())
+      .filter(Boolean)
+      .filter((category) => {
+        const key = category.toLowerCase();
+
+        if (seen.has(key)) return false;
+
+        seen.add(key);
+        return true;
+      });
+
     setForm((prev) => ({
       ...prev,
-      categories: value
-        .split(",")
-        .map((category) => category.trim())
-        .filter(Boolean),
+      categories,
     }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const seen = new Set<string>();
+
     const categories = categoriesText
       .split(",")
       .map((category) => category.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter((category) => {
+        const key = category.toLowerCase();
+
+        if (seen.has(key)) return false;
+
+        seen.add(key);
+        return true;
+      });
 
     if (categories.length === 0) {
       toast.error("At least one category is required");

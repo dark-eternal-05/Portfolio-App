@@ -44,13 +44,23 @@ function parseVisibility(value: VisibilityValue): boolean | null {
 }
 
 function cleanCategories(categories: string[]): string[] {
-  return Array.from(
-    new Set(
-      categories
-        .map((category) => category.trim())
-        .filter(Boolean),
-    ),
-  );
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const category of categories) {
+    const cleaned = category.trim();
+
+    if (!cleaned) continue;
+
+    const key = cleaned.toLowerCase();
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(cleaned);
+    }
+  }
+
+  return result;
 }
 
 function parseCategories(value?: string | null): string[] {

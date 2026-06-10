@@ -428,8 +428,22 @@ export default function Carousel({
   }, []);
 
   const filterOptions = useMemo(() => {
-    const categories = products.flatMap((app) => app.categories || []);
-    return ["All", ...Array.from(new Set(categories))];
+    const seen = new Set<string>();
+    const categories: string[] = [];
+
+    products.forEach((app) => {
+      (app.categories || []).forEach((category) => {
+        const cleaned = category.trim();
+        const key = cleaned.toLowerCase();
+
+        if (!cleaned || seen.has(key)) return;
+
+        seen.add(key);
+        categories.push(cleaned);
+      });
+    });
+
+    return ["All", ...categories];
   }, [products]);
 
   const filteredProducts = useMemo(() => {
@@ -437,8 +451,13 @@ export default function Carousel({
       return products;
     }
 
+    const selectedKey = selectedFilter.trim().toLowerCase();
+
     return products.filter((product) =>
-      product.categories?.includes(selectedFilter),
+      (product.categories || []).some(
+        (category) =>
+          category.trim().toLowerCase() === selectedKey,
+      ),
     );
   }, [products, selectedFilter]);
 
