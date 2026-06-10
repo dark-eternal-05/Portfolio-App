@@ -9,7 +9,7 @@ interface ApplicationPayload {
   title?: string | null;
   link?: string | null;
   description?: string | null;
-  category?: string | null;
+  categories?: string[] | null;
   tagline?: string | null;
   visibility?: VisibilityValue;
 }
@@ -21,7 +21,7 @@ interface ApplicationEntity {
   Title: string;
   link: string;
   description?: string | null;
-  category?: string | null;
+  categories?: string | null;
   tagline?: string | null;
   visibility?: VisibilityValue;
   CreatedAt: string;
@@ -43,13 +43,58 @@ function parseVisibility(value: VisibilityValue): boolean | null {
   return null;
 }
 
+function cleanCategories(categories: string[]): string[] {
+  return Array.from(
+    new Set(
+      categories
+        .map((category) => category.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function parseCategories(value?: string | null): string[] {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function validateCategories(categories: unknown): string | null {
+  if (!Array.isArray(categories)) {
+    return "Categories must be an array";
+  }
+
+  const cleaned = cleanCategories(categories);
+
+  if (cleaned.length === 0) {
+    return "At least one category is required";
+  }
+
+  for (const category of cleaned) {
+    if (typeof category !== "string") {
+      return "Each category must be a string";
+    }
+
+    if (!isAlphabetOnly(category)) {
+      return "Categories must contain only upper and lower case alphabets";
+    }
+  }
+
+  return null;
+}
+
 function formatApplications(entities: ApplicationEntity[]) {
   return entities.map((item) => ({
     id: item.id,
     title: item.Title,
     link: item.link,
     description: item.description || null,
-    category: item.category || null,
+    categories: parseCategories(item.categories),
     tagline: item.tagline || null,
     visibility: item.visibility === false ? false : true,
     createdAt: item.CreatedAt,
@@ -58,23 +103,20 @@ function formatApplications(entities: ApplicationEntity[]) {
 }
 
 function validateCreatePayload(payload: ApplicationPayload): string | null {
-  const { title, link, description, category, tagline, visibility } = payload;
+  const { title, link, description, categories, tagline, visibility } = payload;
 
   if (!title) return "Title is mandatory";
   if (!description) return "Description is mandatory";
   if (!link) return "Link is mandatory";
   if (!tagline) return "Tagline is mandatory";
-  if (!category) return "Category is mandatory";
 
   if (typeof title !== "string") return "Title must be a string";
   if (typeof link !== "string") return "Link must be a string";
   if (typeof description !== "string") return "Description must be a string";
   if (typeof tagline !== "string") return "Tagline must be a string";
-  if (typeof category !== "string") return "Category must be a string";
 
-  if (!isAlphabetOnly(category.trim())) {
-    return "Category must contain only upper and lower case alphabets";
-  }
+  const categoryError = validateCategories(categories);
+  if (categoryError) return categoryError;
 
   if (parseVisibility(visibility) === null) {
     return "Visibility must be boolean, 1, or 0";
@@ -84,7 +126,7 @@ function validateCreatePayload(payload: ApplicationPayload): string | null {
 }
 
 function validateUpdatePayload(payload: ApplicationPayload): string | null {
-  const { title, link, description, category, tagline, visibility } = payload;
+  const { title, link, description, categories, tagline, visibility } = payload;
 
   if (title !== undefined && (typeof title !== "string" || title.trim() === "")) {
     return "Title must be a non-empty string";
@@ -102,12 +144,9 @@ function validateUpdatePayload(payload: ApplicationPayload): string | null {
     return "Tagline must be a string";
   }
 
-  if (category !== undefined && category !== null) {
-    if (typeof category !== "string") return "Category must be a string";
-
-    if (category.trim() !== "" && !isAlphabetOnly(category.trim())) {
-      return "Category must contain only upper and lower case alphabets";
-    }
+  if (categories !== undefined && categories !== null) {
+    const categoryError = validateCategories(categories);
+    if (categoryError) return categoryError;
   }
 
   if (visibility !== undefined && parseVisibility(visibility) === null) {
@@ -168,7 +207,7 @@ async function reIndex(): Promise<void> {
       Title: entities[i].Title,
       link: entities[i].link,
       description: entities[i].description || "",
-      category: entities[i].category || "",
+      categories: entities[i].categories || "[]",
       tagline: entities[i].tagline || "",
       visibility: entities[i].visibility === false ? false : true,
       CreatedAt: entities[i].CreatedAt,
@@ -210,13 +249,13 @@ export async function createApplication(req: Request, res: Response): Promise<vo
       return;
     }
 
-    const { title, link, description, category, tagline, visibility } =
+    const { title, link, description, categories, tagline, visibility } =
       req.body as ApplicationPayload;
 
     const cleanTitle = title!.trim();
     const cleanLink = link!.trim();
     const cleanDescription = description!.trim();
-    const cleanCategory = category!.trim();
+    const cleanCategoriesValue = cleanCategories(categories!);
     const cleanTagline = tagline!.trim();
     const cleanVisibility = parseVisibility(visibility);
 
@@ -248,7 +287,7 @@ export async function createApplication(req: Request, res: Response): Promise<vo
       Title: cleanTitle,
       link: cleanLink,
       description: cleanDescription,
-      category: cleanCategory,
+      categories: JSON.stringify(cleanCategoriesValue),
       tagline: cleanTagline,
       visibility: cleanVisibility,
       CreatedAt: now,
@@ -311,10 +350,10 @@ export async function updateApplication(req: Request, res: Response): Promise<vo
         ? ((req.body.description as string)?.trim() || "")
         : existingEntity.description || "";
 
-    const updatedCategory =
-      req.body.category !== undefined
-        ? ((req.body.category as string)?.trim() || "")
-        : existingEntity.category || "";
+    const updatedCategories =
+      req.body.categories !== undefined
+        ? cleanCategories(req.body.categories)
+        : parseCategories(existingEntity.categories);
 
     const updatedTagline =
       req.body.tagline !== undefined
@@ -351,7 +390,7 @@ export async function updateApplication(req: Request, res: Response): Promise<vo
       Title: updatedTitle,
       link: updatedLink,
       description: updatedDescription,
-      category: updatedCategory,
+      categories: JSON.stringify(updatedCategories),
       tagline: updatedTagline,
       visibility: updatedVisibility,
       CreatedAt: existingEntity.CreatedAt,

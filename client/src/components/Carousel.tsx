@@ -44,6 +44,8 @@ function createCardImage(product: Product, isDark: boolean): string {
   const descColor = isDark ? "#cbd5e1" : "#475569";
   const borderOpacity = isDark ? "0.45" : "0.8";
   const buttonOpacity = isDark ? "0.16" : "0.1";
+  const cardColor = product.color || "#00D4FF";
+  const categoryText = product.categories?.join(", ") || "";
 
   const svg = `
     <svg width="900" height="560" xmlns="http://www.w3.org/2000/svg">
@@ -55,19 +57,19 @@ function createCardImage(product: Product, isDark: boolean): string {
       </defs>
 
       <rect width="900" height="560" rx="42" fill="url(#bg)"/>
-      <rect x="2" y="2" width="896" height="556" rx="42" fill="none" stroke="${product.color}" stroke-opacity="${borderOpacity}" stroke-width="3"/>
+      <rect x="2" y="2" width="896" height="556" rx="42" fill="none" stroke="${cardColor}" stroke-opacity="${borderOpacity}" stroke-width="3"/>
 
-      <circle cx="105" cy="105" r="48" fill="${product.color}" fill-opacity="0.18"/>
-      <text x="105" y="123" text-anchor="middle" font-size="52" font-family="Arial" font-weight="700" fill="${product.color}">
-        ${product.id}
+      <circle cx="105" cy="105" r="48" fill="${cardColor}" fill-opacity="0.18"/>
+      <text x="105" y="123" text-anchor="middle" font-size="52" font-family="Arial" font-weight="700" fill="${cardColor}">
+        ${String(product.title || "").charAt(0).toUpperCase()}
       </text>
 
       <text x="72" y="220" font-size="54" font-family="Arial" font-weight="800" fill="${titleColor}">
         ${product.title}
       </text>
 
-      <text x="72" y="270" font-size="22" font-family="Arial" font-weight="700" fill="${product.color}">
-        ${product.category}
+      <text x="72" y="270" font-size="22" font-family="Arial" font-weight="700" fill="${cardColor}">
+        ${categoryText}
       </text>
 
       <foreignObject x="72" y="310" width="740" height="120">
@@ -76,8 +78,8 @@ function createCardImage(product: Product, isDark: boolean): string {
         </div>
       </foreignObject>
 
-      <rect x="72" y="460" width="150" height="48" rx="24" fill="${product.color}" fill-opacity="${buttonOpacity}" stroke="${product.color}" stroke-opacity="0.45"/>
-      <text x="147" y="492" text-anchor="middle" font-size="22" font-family="Arial" font-weight="700" fill="${product.color}">
+      <rect x="72" y="460" width="150" height="48" rx="24" fill="${cardColor}" fill-opacity="${buttonOpacity}" stroke="${cardColor}" stroke-opacity="0.45"/>
+      <text x="147" y="492" text-anchor="middle" font-size="22" font-family="Arial" font-weight="700" fill="${cardColor}">
         Launch &gt;
       </text>
     </svg>
@@ -112,9 +114,7 @@ class GalleryApp {
     this.container = container;
     this.sourceItems = items;
     this.isInfinite = items.length >= 3;
-    this.items = this.isInfinite
-      ? [...items, ...items, ...items, ...items]
-      : items;
+    this.items = this.isInfinite ? [...items, ...items, ...items, ...items] : items;
 
     this.scroll = {
       current: 0,
@@ -256,10 +256,10 @@ class GalleryApp {
     });
   };
 
-  onWheel = (event) => {
+  onWheel = (event: WheelEvent) => {
     if (!this.isInfinite) return;
 
-    (event as WheelEvent).preventDefault();
+    event.preventDefault();
 
     const delta =
       Math.abs(event.deltaX) > Math.abs(event.deltaY)
@@ -363,8 +363,7 @@ class GalleryApp {
         const radius = (halfViewport * halfViewport + bend * bend) / (2 * bend);
 
         const effectiveX = Math.min(Math.abs(x), halfViewport);
-        const arc =
-          radius - Math.sqrt(radius * radius - effectiveX * effectiveX);
+        const arc = radius - Math.sqrt(radius * radius - effectiveX * effectiveX);
 
         media.mesh.position.x = x;
         media.mesh.position.y = -arc;
@@ -407,18 +406,18 @@ export default function Carousel({
   theme: string;
 }): React.JSX.Element {
   const [products, setProducts] = useState<Application[]>([]);
-
   const [selectedFilter, setSelectedFilter] = useState("All");
   const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
+
   const galleryRef = useRef<HTMLDivElement>(null);
   const galleryAppRef = useRef<GalleryApp | null>(null);
 
   const isDark = theme === "dark";
+
   useEffect(() => {
     const load = async () => {
       try {
         const data = await fetchApplications();
-
         setProducts(data.filter((app) => app.visibility));
       } catch (err) {
         console.error(err);
@@ -427,9 +426,9 @@ export default function Carousel({
 
     void load();
   }, []);
-  const filterOptions = useMemo(() => {
-    const categories = products.map((app) => app.category);
 
+  const filterOptions = useMemo(() => {
+    const categories = products.flatMap((app) => app.categories || []);
     return ["All", ...Array.from(new Set(categories))];
   }, [products]);
 
@@ -438,20 +437,20 @@ export default function Carousel({
       return products;
     }
 
-    return products.filter((product) => product.category === selectedFilter);
+    return products.filter((product) =>
+      product.categories?.includes(selectedFilter),
+    );
   }, [products, selectedFilter]);
 
   const galleryItems = useMemo(() => {
     return filteredProducts.map((product, index) => ({
-      image: createCardImage({
-        id: product.title.charAt(0).toUpperCase(),
-        title: product.title,
-        category: product.category,
-        description: product.description,
-        color: getCardColor(index),
-        url: product.link,
-      },
-    isDark),
+      image: createCardImage(
+        {
+          ...product,
+          color: getCardColor(index),
+        },
+        isDark,
+      ),
       text: product.title,
       url: product.link,
     }));
