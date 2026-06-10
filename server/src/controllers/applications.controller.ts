@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { applicationTableClient as tableClient } from "../config/azureTable.js";
-
+import {
+  getBackupApplications,
+  saveBackupApplications,
+} from "../services/applicationBackup.services.js";
 const PARTITION_KEY = "application";
 
 type VisibilityValue = boolean | number | string | null | undefined;
@@ -28,8 +31,8 @@ interface ApplicationEntity {
   UpdatedAt?: string | null;
 }
 
-function normalizeText(value: string) {
-  return value.trim().toLowerCase();
+function normalizeText(value: string | undefined | null) {
+  return (value ?? "").trim().toLowerCase();
 }
 
 function isAlphabetOnly(value: string) {
@@ -86,7 +89,10 @@ function validateCreatePayload(payload: ApplicationPayload): string | null {
 function validateUpdatePayload(payload: ApplicationPayload): string | null {
   const { title, link, description, category, tagline, visibility } = payload;
 
-  if (title !== undefined && (typeof title !== "string" || title.trim() === "")) {
+  if (
+    title !== undefined &&
+    (typeof title !== "string" || title.trim() === "")
+  ) {
     return "Title must be a non-empty string";
   }
 
@@ -94,11 +100,19 @@ function validateUpdatePayload(payload: ApplicationPayload): string | null {
     return "Link must be a non-empty string";
   }
 
-  if (description !== undefined && description !== null && typeof description !== "string") {
+  if (
+    description !== undefined &&
+    description !== null &&
+    typeof description !== "string"
+  ) {
     return "Description must be a string";
   }
 
-  if (tagline !== undefined && tagline !== null && typeof tagline !== "string") {
+  if (
+    tagline !== undefined &&
+    tagline !== null &&
+    typeof tagline !== "string"
+  ) {
     return "Tagline must be a string";
   }
 
@@ -130,16 +144,20 @@ async function getAllEntities(): Promise<ApplicationEntity[]> {
 }
 
 function hasDuplicateTitle(
-  entities: ApplicationEntity[],
+  entities: any[],
   title: string,
   excludeId: string | number | null = null,
 ): boolean {
   return entities.some((entity) => {
-    if (Number(entity.id) === Number(excludeId)) return false;
-    return normalizeText(entity.Title) === normalizeText(title);
+    if (Number(entity.id) === Number(excludeId)) {
+      return false;
+    }
+
+    const entityTitle = entity.Title ?? entity.title ?? "";
+
+    return normalizeText(entityTitle) === normalizeText(title);
   });
 }
-
 function hasDuplicateLink(
   entities: ApplicationEntity[],
   link: string,
@@ -177,8 +195,27 @@ async function reIndex(): Promise<void> {
   }
 }
 
-export async function getApplications(req: Request, res: Response): Promise<void> {
+export async function getApplications(
+  req: Request,
+  res: Response,
+): Promise<void> {
   try {
+    // Azure unavailable → use backup JSON
+    if (!tableClient) {
+      const backupApps = await getBackupApplications();
+
+      const visibleApps = backupApps.filter((app) => app.visibility === true);
+
+      res.json({
+        success: true,
+        source: "backup",
+        data: visibleApps,
+      });
+
+      return;
+    }
+
+    // Azure available
     const entities = await getAllEntities();
 
     const visibleEntities = entities.filter(
@@ -190,20 +227,46 @@ export async function getApplications(req: Request, res: Response): Promise<void
 
     res.json({
       success: true,
+      source: "azure",
       data: formatApplications(visibleEntities),
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch applications",
-      error: (error as Error).message,
-    });
+    console.error("GET APPLICATIONS ERROR:", error);
+
+    try {
+      // Azure request failed → fallback
+      const backupApps = await getBackupApplications();
+
+      const visibleApps = backupApps.filter((app) => app.visibility === true);
+
+      res.json({
+        success: true,
+        source: "backup",
+        data: visibleApps,
+      });
+
+      return;
+    } catch (backupError) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch applications",
+        error:
+          backupError instanceof Error
+            ? backupError.message
+            : String(backupError),
+      });
+    }
   }
 }
 
-export async function createApplication(req: Request, res: Response): Promise<void> {
+export async function createApplication(
+  req: Request,
+  res: Response,
+): Promise<void> {
   try {
-    const validationError = validateCreatePayload(req.body as ApplicationPayload);
+    const validationError = validateCreatePayload(
+      req.body as ApplicationPayload,
+    );
 
     if (validationError) {
       res.status(400).json({ success: false, message: validationError });
@@ -220,7 +283,13 @@ export async function createApplication(req: Request, res: Response): Promise<vo
     const cleanTagline = tagline!.trim();
     const cleanVisibility = parseVisibility(visibility);
 
-    const entities = await getAllEntities();
+    let entities = [];
+
+    if (tableClient) {
+      entities = await getAllEntities();
+    } else {
+      entities = await getBackupApplications();
+    }
 
     if (hasDuplicateTitle(entities, cleanTitle)) {
       res.status(409).json({
@@ -255,14 +324,46 @@ export async function createApplication(req: Request, res: Response): Promise<vo
       UpdatedAt: "",
     };
 
+    if (!tableClient) {
+      const backupApps = await getBackupApplications();
+
+      const backupApp = {
+        id: nextId,
+        title: cleanTitle,
+        tagline: cleanTagline,
+        description: cleanDescription,
+        category: cleanCategory,
+        link: cleanLink,
+        visibility: cleanVisibility,
+        createdAt: now,
+        updatedAt: "",
+      };
+
+      backupApps.push(backupApp);
+
+      await saveBackupApplications(backupApps);
+
+      res.status(201).json({
+        success: true,
+        source: "backup",
+        message: "Application created successfully",
+        data: backupApp,
+      });
+
+      return;
+    }
+
     await tableClient.createEntity(entity);
 
     res.status(201).json({
       success: true,
+      source: "azure",
       message: "Application created successfully",
       data: formatApplications([entity])[0],
     });
   } catch (error) {
+    console.error("CREATE APPLICATION ERROR:");
+    console.error(error);
     res.status(500).json({
       success: false,
       message: "Failed to create application",
@@ -271,21 +372,28 @@ export async function createApplication(req: Request, res: Response): Promise<vo
   }
 }
 
-export async function updateApplication(req: Request, res: Response): Promise<void> {
+export async function updateApplication(
+  req: Request,
+  res: Response,
+): Promise<void> {
   try {
     const { id } = req.params;
 
-    const validationError = validateUpdatePayload(req.body as ApplicationPayload);
+    const validationError = validateUpdatePayload(
+      req.body as ApplicationPayload,
+    );
 
     if (validationError) {
       res.status(400).json({ success: false, message: validationError });
       return;
     }
 
-    const entities = await getAllEntities();
+    const entities = tableClient
+      ? await getAllEntities()
+      : await getBackupApplications();
 
     const existingEntity = entities.find(
-      (entity) => Number(entity.id) === Number(id),
+      (entity: any) => Number(entity.id) === Number(id),
     );
 
     if (!existingEntity) {
@@ -299,7 +407,7 @@ export async function updateApplication(req: Request, res: Response): Promise<vo
     const updatedTitle =
       req.body.title !== undefined
         ? (req.body.title as string).trim()
-        : existingEntity.Title;
+        : (existingEntity.Title ?? existingEntity.title);
 
     const updatedLink =
       req.body.link !== undefined
@@ -308,17 +416,17 @@ export async function updateApplication(req: Request, res: Response): Promise<vo
 
     const updatedDescription =
       req.body.description !== undefined
-        ? ((req.body.description as string)?.trim() || "")
+        ? (req.body.description as string)?.trim() || ""
         : existingEntity.description || "";
 
     const updatedCategory =
       req.body.category !== undefined
-        ? ((req.body.category as string)?.trim() || "")
+        ? (req.body.category as string)?.trim() || ""
         : existingEntity.category || "";
 
     const updatedTagline =
       req.body.tagline !== undefined
-        ? ((req.body.tagline as string)?.trim() || "")
+        ? (req.body.tagline as string)?.trim() || ""
         : existingEntity.tagline || "";
 
     const updatedVisibility =
@@ -354,9 +462,50 @@ export async function updateApplication(req: Request, res: Response): Promise<vo
       category: updatedCategory,
       tagline: updatedTagline,
       visibility: updatedVisibility,
-      CreatedAt: existingEntity.CreatedAt,
+      CreatedAt:
+        existingEntity.CreatedAt ??
+        existingEntity.createdAt ??
+        new Date().toISOString(),
       UpdatedAt: new Date().toISOString(),
     };
+
+    if (!tableClient) {
+      const backupApps = await getBackupApplications();
+
+      const index = backupApps.findIndex(
+        (app: any) => Number(app.id) === Number(id),
+      );
+
+      if (index === -1) {
+        res.status(404).json({
+          success: false,
+          message: "Application not found",
+        });
+        return;
+      }
+
+      backupApps[index] = {
+        ...backupApps[index],
+        title: updatedTitle,
+        tagline: updatedTagline,
+        description: updatedDescription,
+        category: updatedCategory,
+        link: updatedLink,
+        visibility: updatedVisibility,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await saveBackupApplications(backupApps);
+
+      res.json({
+        success: true,
+        source: "backup",
+        message: "Application updated successfully",
+        data: backupApps,
+      });
+
+      return;
+    }
 
     await tableClient.updateEntity(entity, "Replace");
 
@@ -364,6 +513,7 @@ export async function updateApplication(req: Request, res: Response): Promise<vo
 
     res.json({
       success: true,
+      source: "azure",
       message: "Application updated successfully",
       data: formatApplications(updatedEntities),
     });
@@ -376,16 +526,21 @@ export async function updateApplication(req: Request, res: Response): Promise<vo
   }
 }
 
-export async function deleteApplication(req: Request, res: Response): Promise<void> {
+export async function deleteApplication(
+  req: Request,
+  res: Response,
+): Promise<void> {
   try {
     const { id } = req.params;
 
-    const entities = await getAllEntities();
+    const entities = tableClient
+  ? await getAllEntities()
+  : await getBackupApplications();
 
     const existingEntity = entities.find(
-      (entity) => Number(entity.id) === Number(id),
-    );
-
+  (entity: any) =>
+    Number(entity.id) === Number(id),
+);
     if (!existingEntity) {
       res.status(404).json({
         success: false,
@@ -394,13 +549,59 @@ export async function deleteApplication(req: Request, res: Response): Promise<vo
       return;
     }
 
-    await tableClient.deleteEntity(PARTITION_KEY, String(id));
-    await reIndex();
+    if (!tableClient) {
+  const backupApps =
+    await getBackupApplications();
 
-    res.json({
-      success: true,
-      message: "Application deleted successfully and IDs reindexed",
-    });
+  const filteredApps =
+    backupApps.filter(
+      (app: any) =>
+        Number(app.id) !== Number(id),
+    );
+
+  // Re-index IDs
+  const reIndexedApps =
+    filteredApps.map(
+      (app: any, index: number) => ({
+        ...app,
+        id: index + 1,
+      }),
+    );
+
+  await saveBackupApplications(
+    reIndexedApps,
+  );
+
+  res.json({
+    success: true,
+    source: "backup",
+    message:
+      "Application deleted successfully and IDs reindexed",
+    data: reIndexedApps,
+  });
+
+  return;
+}
+
+await tableClient.deleteEntity(
+  PARTITION_KEY,
+  String(id),
+);
+
+await reIndex();
+
+const updatedEntities =
+  await getAllEntities();
+
+res.json({
+  success: true,
+  source: "azure",
+  message:
+    "Application deleted successfully and IDs reindexed",
+  data: formatApplications(
+    updatedEntities,
+  ),
+});
   } catch (error) {
     res.status(500).json({
       success: false,

@@ -443,15 +443,17 @@ export default function Carousel({
 
   const galleryItems = useMemo(() => {
     return filteredProducts.map((product, index) => ({
-      image: createCardImage({
-        id: product.title.charAt(0).toUpperCase(),
-        title: product.title,
-        category: product.category,
-        description: product.description,
-        color: getCardColor(index),
-        url: product.link,
-      },
-    isDark),
+      image: createCardImage(
+        {
+          id: product.title.charAt(0).toUpperCase(),
+          title: product.title,
+          category: product.category,
+          description: product.description,
+          color: getCardColor(index),
+          url: product.link,
+        },
+        isDark,
+      ),
       text: product.title,
       url: product.link,
     }));
@@ -478,7 +480,10 @@ export default function Carousel({
       galleryAppRef.current = null;
     };
   }, [galleryItems]);
-
+  console.log("Products:", products.length);
+  console.log("Filtered:", filteredProducts.length);
+  console.log("Gallery:", galleryItems.length);
+  console.log(filteredProducts);
   return (
     <div className="relative w-full">
       <div className="relative z-50 mx-auto flex max-w-7xl justify-end px-2 pb-3 md:px-8 md:pb-0">

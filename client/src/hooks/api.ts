@@ -36,9 +36,7 @@ export const updateApplication = async (
   return data.data;
 };
 
-export const deleteApplication = async (
-  id: string | number,
-): Promise<void> => {
+export const deleteApplication = async (id: string | number): Promise<void> => {
   await api.delete(`/applications/${id}`);
 };
 
