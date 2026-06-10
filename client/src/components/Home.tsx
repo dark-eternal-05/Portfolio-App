@@ -6,7 +6,7 @@ import Carousel from "./Carousel";
 import FloralBackground from "./FloralBackground";
 import VideoSection from "./VideoSection";
 import WhatsNew from "./WhatsNew";
-
+// prarambh
 export default function Home(): React.JSX.Element {
   const [mounted, setMounted] = useState(false);
 
