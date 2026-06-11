@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   fetchWhatsNew,
@@ -39,8 +39,8 @@ export default function WhatsNewTab() {
     setSubmitting(true);
 
     try {
-      const created = await createWhatsNew(data);
-      setItems((prev) => [created, ...prev]);
+      const updatedTable = await createWhatsNew(data);
+      setItems(updatedTable);
       setShowAddModal(false);
       toast.success("Item added");
     } catch {
@@ -73,8 +73,8 @@ export default function WhatsNewTab() {
     setSubmitting(true);
 
     try {
-      await deleteWhatsNew(deleteTarget._id);
-      setItems((prev) => prev.filter((i) => i._id !== deleteTarget._id));
+      const updatedTable = await deleteWhatsNew(deleteTarget._id);
+      setItems(updatedTable);
       setDeleteTarget(null);
       toast.success("Item deleted");
     } catch {
@@ -125,10 +125,17 @@ export default function WhatsNewTab() {
           </div>
         ) : (items?.length || 0) === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <p className="text-sm font-medium" style={{ color: "var(--text-main)" }}>
+            <p
+              className="text-sm font-medium"
+              style={{ color: "var(--text-main)" }}
+            >
               No updates posted yet
             </p>
-            <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+
+            <p
+              className="mt-1 text-xs"
+              style={{ color: "var(--text-secondary)" }}
+            >
               Click "Add Update" to post something new
             </p>
           </div>
@@ -200,22 +207,16 @@ export default function WhatsNewTab() {
                       {item.title}
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td
+                      className="px-4 py-4"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
                       {item.link ? (
-                        <a
-                          href={item.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs font-medium transition-colors"
-                          style={{ color: "var(--accent)" }}
-                        >
-                          View
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : (
-                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                          —
+                        <span className="break-all text-xs">
+                          {item.link}
                         </span>
+                      ) : (
+                        <span style={{ color: "var(--text-muted)" }}>—</span>
                       )}
                     </td>
 
@@ -226,19 +227,21 @@ export default function WhatsNewTab() {
                       {formatDate(item.createdAt)}
                     </td>
 
-                    <td className="w-[84px] min-w-[84px] px-2 py-4 text-center">
+                    <td className="w-[84px] min-w-[84px] px-2 py-4">
                       <div className="flex items-center justify-center gap-1">
                         <button
+                          type="button"
                           onClick={() => setEditTarget(item)}
-                          className="btn-ghost"
+                          className="btn-icon"
                           title="Edit"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => setDeleteTarget(item)}
-                          className="btn-danger-ghost"
+                          className="btn-icon-danger"
                           title="Delete"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -254,7 +257,7 @@ export default function WhatsNewTab() {
       </div>
 
       {showAddModal && (
-        <Modal title="Add What's New" onClose={() => setShowAddModal(false)}>
+        <Modal title="Add Update" onClose={() => setShowAddModal(false)}>
           <WhatsNewForm
             onSubmit={handleCreate}
             onCancel={() => setShowAddModal(false)}
@@ -276,9 +279,9 @@ export default function WhatsNewTab() {
 
       {deleteTarget && (
         <ConfirmDialog
-          message={`"${deleteTarget.title}" will be permanently removed.`}
-          onConfirm={handleDelete}
+          message={`Delete "${deleteTarget.title}"? This action cannot be undone.`}
           onCancel={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
           loading={submitting}
         />
       )}

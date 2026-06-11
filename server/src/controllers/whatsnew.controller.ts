@@ -174,10 +174,12 @@ export async function createWhatsNew(req: Request, res: Response): Promise<void>
 
     await tableClient.createEntity(entity);
 
+    const updatedEntities = await getAllEntities();
+
     res.status(201).json({
       success: true,
       message: "WhatsNew item created successfully",
-      data: formatWhatsNew([entity])[0],
+      data: formatWhatsNew(updatedEntities),
     });
   } catch (error) {
     res.status(500).json({
