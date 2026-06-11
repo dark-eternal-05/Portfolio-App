@@ -13,7 +13,7 @@ router.get("/", getApplications);
 
 router.post("/", createApplication);
 
-router.put("/:id", updateApplication);
+router.patch("/:id", updateApplication);
 
 router.delete("/:id", deleteApplication);
 

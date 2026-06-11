@@ -13,7 +13,7 @@ router.get("/", getWhatsNew);
 
 router.post("/", createWhatsNew);
 
-router.put("/:id", updateWhatsNew);
+router.patch("/:id", updateWhatsNew);
 
 router.delete("/:id", deleteWhatsNew);
 
