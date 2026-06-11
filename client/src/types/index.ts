@@ -3,7 +3,7 @@ export interface Application {
   title: string;
   tagline: string;
   description: string;
-  category: string;
+  category: string[];
   link: string;
   visibility: boolean;
   color?: string;

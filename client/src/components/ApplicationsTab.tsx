@@ -210,7 +210,7 @@ export default function ApplicationsTab() {
 
                   <td className="px-4 py-3.5">
                     <div className="flex max-w-[220px] flex-wrap gap-1">
-                      {(app.categories || []).map((category) => (
+                      {(app.category || []).map((category) => (
                         <span
                           key={category}
                           className="rounded-full px-2 py-1 text-xs font-medium"
