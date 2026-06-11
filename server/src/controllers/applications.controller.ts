@@ -4,6 +4,7 @@ import {
   getBackupApplications,
   saveBackupApplications,
 } from "../services/applicationBackup.services.js";
+
 const PARTITION_KEY = "application";
 
 type VisibilityValue = boolean | number | string | null | undefined;
@@ -24,7 +25,7 @@ interface ApplicationEntity {
   Title: string;
   link: string;
   description?: string | null;
-  categories?: string | null;
+  categories?: string | string[] | null;
   tagline?: string | null;
   visibility?: VisibilityValue;
   CreatedAt: string;
@@ -43,6 +44,7 @@ function parseVisibility(value: VisibilityValue): boolean | null {
   if (value === undefined || value === null || value === "") return true;
   if (value === true || value === 1 || value === "1") return true;
   if (value === false || value === 0 || value === "0") return false;
+
   return null;
 }
 
@@ -66,12 +68,18 @@ function cleanCategories(categories: string[]): string[] {
   return result;
 }
 
-function parseCategories(value?: string | null): string[] {
+function parseCategories(value?: string | string[] | null): string[] {
   if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return cleanCategories(value.filter((item) => typeof item === "string"));
+  }
 
   try {
     const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? cleanCategories(parsed.filter((item) => typeof item === "string"))
+      : [];
   } catch {
     return [];
   }
@@ -82,6 +90,12 @@ function validateCategories(categories: unknown): string | null {
     return "Categories must be an array";
   }
 
+  for (const category of categories) {
+    if (typeof category !== "string") {
+      return "Each category must be a string";
+    }
+  }
+
   const cleaned = cleanCategories(categories);
 
   if (cleaned.length === 0) {
@@ -89,10 +103,6 @@ function validateCategories(categories: unknown): string | null {
   }
 
   for (const category of cleaned) {
-    if (typeof category !== "string") {
-      return "Each category must be a string";
-    }
-
     if (!isAlphabetOnly(category)) {
       return "Categories must contain only upper and lower case alphabets";
     }
@@ -101,17 +111,17 @@ function validateCategories(categories: unknown): string | null {
   return null;
 }
 
-function formatApplications(entities: ApplicationEntity[]) {
+function formatApplications(entities: any[]) {
   return entities.map((item) => ({
     id: item.id,
-    title: item.Title,
+    title: item.Title ?? item.title,
     link: item.link,
-    description: item.description || null,
-    categories: parseCategories(item.categories),
-    tagline: item.tagline || null,
+    description: item.description || "",
+    categories: parseCategories(item.categories ?? item.category),
+    tagline: item.tagline || "",
     visibility: item.visibility === false ? false : true,
-    createdAt: item.CreatedAt,
-    updatedAt: item.UpdatedAt || null,
+    createdAt: item.CreatedAt ?? item.createdAt ?? "",
+    updatedAt: item.UpdatedAt ?? item.updatedAt ?? "",
   }));
 }
 
@@ -181,6 +191,8 @@ function validateUpdatePayload(payload: ApplicationPayload): string | null {
 }
 
 async function getAllEntities(): Promise<ApplicationEntity[]> {
+  if (!tableClient) return [];
+
   const results: ApplicationEntity[] = [];
 
   for await (const entity of tableClient.listEntities()) {
@@ -198,27 +210,29 @@ function hasDuplicateTitle(
   excludeId: string | string[] | null = null,
 ): boolean {
   return entities.some((entity) => {
-    if (Number(entity.id) === Number(excludeId)) {
-      return false;
-    }
+    if (Number(entity.id) === Number(excludeId)) return false;
 
     const entityTitle = entity.Title ?? entity.title ?? "";
 
     return normalizeText(entityTitle) === normalizeText(title);
   });
 }
+
 function hasDuplicateLink(
-  entities: ApplicationEntity[],
+  entities: any[],
   link: string,
   excludeId: string | string[] | null = null,
 ): boolean {
   return entities.some((entity) => {
     if (Number(entity.id) === Number(excludeId)) return false;
+
     return normalizeText(entity.link) === normalizeText(link);
   });
 }
 
 async function reIndex(): Promise<void> {
+  if (!tableClient) return;
+
   const entities = await getAllEntities();
 
   for (const entity of entities) {
@@ -235,7 +249,10 @@ async function reIndex(): Promise<void> {
       Title: entities[i].Title,
       link: entities[i].link,
       description: entities[i].description || "",
-      categories: entities[i].categories || "[]",
+      categories:
+        typeof entities[i].categories === "string"
+          ? entities[i].categories
+          : JSON.stringify(entities[i].categories ?? []),
       tagline: entities[i].tagline || "",
       visibility: entities[i].visibility === false ? false : true,
       CreatedAt: entities[i].CreatedAt,
@@ -248,53 +265,54 @@ export async function getApplications(
   req: Request,
   res: Response,
 ): Promise<void> {
+  const includeHidden = req.query.includeHidden === "true";
+
   try {
-    // Azure unavailable → use backup JSON
     if (!tableClient) {
       const backupApps = await getBackupApplications();
-
-      const visibleApps = backupApps.filter((app) => app.visibility === true);
+      const formattedApps = formatApplications(backupApps);
 
       res.json({
         success: true,
         source: "backup",
-        data: visibleApps,
+        data: includeHidden
+          ? formattedApps
+          : formattedApps.filter((app) => app.visibility === true),
       });
 
       return;
     }
 
-    // Azure available
     const entities = await getAllEntities();
 
-    const visibleEntities = entities.filter(
-      (item) =>
-        item.visibility === true ||
-        item.visibility === 1 ||
-        item.visibility === "1",
-    );
+    const finalEntities = includeHidden
+      ? entities
+      : entities.filter(
+          (item) =>
+            item.visibility === true ||
+            item.visibility === 1 ||
+            item.visibility === "1",
+        );
 
     res.json({
       success: true,
       source: "azure",
-      data: formatApplications(visibleEntities),
+      data: formatApplications(finalEntities),
     });
   } catch (error) {
     console.error("GET APPLICATIONS ERROR:", error);
 
     try {
-      // Azure request failed → fallback
       const backupApps = await getBackupApplications();
-
-      const visibleApps = backupApps.filter((app) => app.visibility === true);
+      const formattedApps = formatApplications(backupApps);
 
       res.json({
         success: true,
         source: "backup",
-        data: visibleApps,
+        data: includeHidden
+          ? formattedApps
+          : formattedApps.filter((app) => app.visibility === true),
       });
-
-      return;
     } catch (backupError) {
       res.status(500).json({
         success: false,
@@ -331,14 +349,11 @@ export async function createApplication(
     const cleanCategoriesValue = cleanCategories(categories!);
     const cleanTagline = tagline!.trim();
     const cleanVisibility = parseVisibility(visibility);
+    const now = new Date().toISOString();
 
-    let entities = [];
-
-    if (tableClient) {
-      entities = await getAllEntities();
-    } else {
-      entities = await getBackupApplications();
-    }
+    const entities = tableClient
+      ? await getAllEntities()
+      : formatApplications(await getBackupApplications());
 
     if (hasDuplicateTitle(entities, cleanTitle)) {
       res.status(409).json({
@@ -357,21 +372,6 @@ export async function createApplication(
     }
 
     const nextId = entities.length + 1;
-    const now = new Date().toISOString();
-
-    const entity: ApplicationEntity = {
-      partitionKey: PARTITION_KEY,
-      rowKey: String(nextId),
-      id: nextId,
-      Title: cleanTitle,
-      link: cleanLink,
-      description: cleanDescription,
-      categories: JSON.stringify(cleanCategoriesValue),
-      tagline: cleanTagline,
-      visibility: cleanVisibility,
-      CreatedAt: now,
-      UpdatedAt: "",
-    };
 
     if (!tableClient) {
       const backupApps = await getBackupApplications();
@@ -381,7 +381,7 @@ export async function createApplication(
         title: cleanTitle,
         tagline: cleanTagline,
         description: cleanDescription,
-        category: cleanCategories,
+        categories: cleanCategoriesValue,
         link: cleanLink,
         visibility: cleanVisibility,
         createdAt: now,
@@ -402,6 +402,20 @@ export async function createApplication(
       return;
     }
 
+    const entity: ApplicationEntity = {
+      partitionKey: PARTITION_KEY,
+      rowKey: String(nextId),
+      id: nextId,
+      Title: cleanTitle,
+      link: cleanLink,
+      description: cleanDescription,
+      categories: JSON.stringify(cleanCategoriesValue),
+      tagline: cleanTagline,
+      visibility: cleanVisibility,
+      CreatedAt: now,
+      UpdatedAt: "",
+    };
+
     await tableClient.createEntity(entity);
 
     res.status(201).json({
@@ -411,8 +425,8 @@ export async function createApplication(
       data: formatApplications([entity])[0],
     });
   } catch (error) {
-    console.error("CREATE APPLICATION ERROR:");
-    console.error(error);
+    console.error("CREATE APPLICATION ERROR:", error);
+
     res.status(500).json({
       success: false,
       message: "Failed to create application",
@@ -437,9 +451,11 @@ export async function updateApplication(
       return;
     }
 
-    const entities = tableClient
+    const rawEntities = tableClient
       ? await getAllEntities()
       : await getBackupApplications();
+
+    const entities = formatApplications(rawEntities);
 
     const existingEntity = entities.find(
       (entity: any) => Number(entity.id) === Number(id),
@@ -456,7 +472,7 @@ export async function updateApplication(
     const updatedTitle =
       req.body.title !== undefined
         ? (req.body.title as string).trim()
-        : (existingEntity.Title ?? existingEntity.title);
+        : existingEntity.title;
 
     const updatedLink =
       req.body.link !== undefined
@@ -471,7 +487,7 @@ export async function updateApplication(
     const updatedCategories =
       req.body.categories !== undefined
         ? cleanCategories(req.body.categories)
-        : parseCategories(existingEntity.categories);
+        : existingEntity.categories || [];
 
     const updatedTagline =
       req.body.tagline !== undefined
@@ -501,23 +517,6 @@ export async function updateApplication(
       return;
     }
 
-    const entity: ApplicationEntity = {
-      partitionKey: PARTITION_KEY,
-      rowKey: String(id),
-      id: Number(id),
-      Title: updatedTitle,
-      link: updatedLink,
-      description: updatedDescription,
-      categories: JSON.stringify(updatedCategories),
-      tagline: updatedTagline,
-      visibility: updatedVisibility,
-      CreatedAt:
-        existingEntity.CreatedAt ??
-        existingEntity.createdAt ??
-        new Date().toISOString(),
-      UpdatedAt: new Date().toISOString(),
-    };
-
     if (!tableClient) {
       const backupApps = await getBackupApplications();
 
@@ -538,7 +537,7 @@ export async function updateApplication(
         title: updatedTitle,
         tagline: updatedTagline,
         description: updatedDescription,
-        category: updatedCategories,
+        categories: updatedCategories,
         link: updatedLink,
         visibility: updatedVisibility,
         updatedAt: new Date().toISOString(),
@@ -550,11 +549,25 @@ export async function updateApplication(
         success: true,
         source: "backup",
         message: "Application updated successfully",
-        data: backupApps,
+        data: formatApplications(backupApps),
       });
 
       return;
     }
+
+    const entity: ApplicationEntity = {
+      partitionKey: PARTITION_KEY,
+      rowKey: String(id),
+      id: Number(id),
+      Title: updatedTitle,
+      link: updatedLink,
+      description: updatedDescription,
+      categories: JSON.stringify(updatedCategories),
+      tagline: updatedTagline,
+      visibility: updatedVisibility,
+      CreatedAt: existingEntity.createdAt || new Date().toISOString(),
+      UpdatedAt: new Date().toISOString(),
+    };
 
     await tableClient.updateEntity(entity, "Replace");
 
@@ -582,14 +595,16 @@ export async function deleteApplication(
   try {
     const { id } = req.params;
 
-    const entities = tableClient
-  ? await getAllEntities()
-  : await getBackupApplications();
+    const rawEntities = tableClient
+      ? await getAllEntities()
+      : await getBackupApplications();
+
+    const entities = formatApplications(rawEntities);
 
     const existingEntity = entities.find(
-  (entity: any) =>
-    Number(entity.id) === Number(id),
-);
+      (entity: any) => Number(entity.id) === Number(id),
+    );
+
     if (!existingEntity) {
       res.status(404).json({
         success: false,
@@ -599,58 +614,38 @@ export async function deleteApplication(
     }
 
     if (!tableClient) {
-  const backupApps =
-    await getBackupApplications();
+      const backupApps = await getBackupApplications();
 
-  const filteredApps =
-    backupApps.filter(
-      (app: any) =>
-        Number(app.id) !== Number(id),
-    );
+      const reIndexedApps = backupApps
+        .filter((app: any) => Number(app.id) !== Number(id))
+        .map((app: any, index: number) => ({
+          ...app,
+          id: index + 1,
+        }));
 
-  // Re-index IDs
-  const reIndexedApps =
-    filteredApps.map(
-      (app: any, index: number) => ({
-        ...app,
-        id: index + 1,
-      }),
-    );
+      await saveBackupApplications(reIndexedApps);
 
-  await saveBackupApplications(
-    reIndexedApps,
-  );
+      res.json({
+        success: true,
+        source: "backup",
+        message: "Application deleted successfully and IDs reindexed",
+        data: formatApplications(reIndexedApps),
+      });
 
-  res.json({
-    success: true,
-    source: "backup",
-    message:
-      "Application deleted successfully and IDs reindexed",
-    data: reIndexedApps,
-  });
+      return;
+    }
 
-  return;
-}
+    await tableClient.deleteEntity(PARTITION_KEY, String(id));
+    await reIndex();
 
-await tableClient.deleteEntity(
-  PARTITION_KEY,
-  String(id),
-);
+    const updatedEntities = await getAllEntities();
 
-await reIndex();
-
-const updatedEntities =
-  await getAllEntities();
-
-res.json({
-  success: true,
-  source: "azure",
-  message:
-    "Application deleted successfully and IDs reindexed",
-  data: formatApplications(
-    updatedEntities,
-  ),
-});
+    res.json({
+      success: true,
+      source: "azure",
+      message: "Application deleted successfully and IDs reindexed",
+      data: formatApplications(updatedEntities),
+    });
   } catch (error) {
     res.status(500).json({
       success: false,

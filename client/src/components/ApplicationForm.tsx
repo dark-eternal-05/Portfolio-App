@@ -30,6 +30,23 @@ export default function ApplicationForm({
     initial?.categories?.join(", ") ?? "",
   );
 
+  const normalizeCategories = (value: string): string[] => {
+    const seen = new Set<string>();
+
+    return value
+      .split(",")
+      .map((category) => category.trim())
+      .filter(Boolean)
+      .filter((category) => {
+        const key = category.toLowerCase();
+
+        if (seen.has(key)) return false;
+
+        seen.add(key);
+        return true;
+      });
+  };
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
@@ -53,22 +70,9 @@ export default function ApplicationForm({
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const value = e.target.value;
+    const categories = normalizeCategories(value);
+
     setCategoriesText(value);
-
-    const seen = new Set<string>();
-
-    const categories = value
-      .split(",")
-      .map((category) => category.trim())
-      .filter(Boolean)
-      .filter((category) => {
-        const key = category.toLowerCase();
-
-        if (seen.has(key)) return false;
-
-        seen.add(key);
-        return true;
-      });
 
     setForm((prev) => ({
       ...prev,
@@ -79,20 +83,7 @@ export default function ApplicationForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const seen = new Set<string>();
-
-    const categories = categoriesText
-      .split(",")
-      .map((category) => category.trim())
-      .filter(Boolean)
-      .filter((category) => {
-        const key = category.toLowerCase();
-
-        if (seen.has(key)) return false;
-
-        seen.add(key);
-        return true;
-      });
+    const categories = normalizeCategories(categoriesText);
 
     if (categories.length === 0) {
       toast.error("At least one category is required");
@@ -211,7 +202,7 @@ export default function ApplicationForm({
             value={categoriesText}
             onChange={handleCategoriesChange}
             required
-            placeholder="Analytics, Automation, Security"
+            placeholder="Separate with commas, e.g. AI, Productivity"
             className="input-field"
           />
         </div>

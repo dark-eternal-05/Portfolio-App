@@ -3,7 +3,7 @@ export interface Application {
   title: string;
   tagline: string;
   description: string;
-  category: string[];
+  categories: string[];
   link: string;
   visibility: boolean;
   color?: string;
@@ -15,13 +15,14 @@ export interface ApplicationFormData {
   title: string;
   tagline: string;
   description: string;
-  category: string;
+  categories: string[];
   link: string;
   visibility: boolean;
 }
 
 export interface WhatsNewItem {
   _id: string;
+  id?: string | number;
   title: string;
   link?: string;
   createdAt: string;
