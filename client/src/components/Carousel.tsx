@@ -45,7 +45,7 @@ function createCardImage(product: Product, isDark: boolean): string {
   const borderOpacity = isDark ? "0.45" : "0.8";
   const buttonOpacity = isDark ? "0.16" : "0.1";
   const cardColor = product.color || "#00D4FF";
-  const categoryText = product.category?.join(", ") || "";
+  const categoryText = product.categories?.join(", ") || "";
 
   const svg = `
     <svg width="900" height="560" xmlns="http://www.w3.org/2000/svg">
@@ -432,8 +432,8 @@ export default function Carousel({
     const categories: string[] = [];
 
     products.forEach((app) => {
-      (app.category || []).forEach((category) => {
-        const cleaned = category.trim();
+      (app.categories || []).forEach((categories) => {
+        const cleaned = categories.trim();
         const key = cleaned.toLowerCase();
 
         if (!cleaned || seen.has(key)) return;
@@ -454,9 +454,9 @@ export default function Carousel({
     const selectedKey = selectedFilter.trim().toLowerCase();
 
     return products.filter((product) =>
-      (product.category || []).some(
-        (category) =>
-          category.trim().toLowerCase() === selectedKey,
+      (product.categories || []).some(
+        (categories) =>
+          categories.trim().toLowerCase() === selectedKey,
       ),
     );
   }, [products, selectedFilter]);
@@ -467,7 +467,7 @@ export default function Carousel({
         {
           id: product.title.charAt(0).toUpperCase(),
           title: product.title,
-          category: product.category,
+          categories: product.categories,
           description: product.description,
           color: getCardColor(index),
           link: product.link,

@@ -56,7 +56,10 @@ export default function WhatsNewTab() {
     setSubmitting(true);
 
     try {
-      const updatedTable = await updateWhatsNew(editTarget._id, data);
+      const updatedTable = await updateWhatsNew(
+  String(editTarget.id ?? editTarget._id),
+  data,
+);
       setItems(updatedTable);
       setEditTarget(null);
       toast.success("Item updated");
@@ -73,7 +76,7 @@ export default function WhatsNewTab() {
     setSubmitting(true);
 
     try {
-      const updatedTable = await deleteWhatsNew(deleteTarget._id);
+      const updatedTable = await deleteWhatsNew(String(deleteTarget.id ?? deleteTarget._id));
       setItems(updatedTable);
       setDeleteTarget(null);
       toast.success("Item deleted");
