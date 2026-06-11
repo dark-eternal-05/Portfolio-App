@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { whatsNewTableClient as tableClient } from "../config/azureTable.js";
-
+import {
+  getBackupWhatsNew,
+  saveBackupWhatsNew,
+} from "../services/whatsNewBackup.services.js";
 const PARTITION_KEY = "whatsnew";
 
 interface WhatsNewPayload {
@@ -18,8 +21,8 @@ interface WhatsNewEntity {
   UpdatedAt?: string | null;
 }
 
-function normalizeText(value: string) {
-  return value.trim().toLowerCase();
+function normalizeText(value: string | undefined | null) {
+  return (value ?? "").trim().toLowerCase();
 }
 
 function formatWhatsNew(entities: WhatsNewEntity[]) {
@@ -78,20 +81,27 @@ async function getAllEntities(): Promise<WhatsNewEntity[]> {
 }
 
 function isDuplicate(
-  entities: WhatsNewEntity[],
+  entities: any[],
   title: string,
   link: string,
   excludeId: string | number | null = null,
 ): boolean {
   const normalizedTitle = normalizeText(title);
+
   const normalizedLink = normalizeText(link || "");
 
   return entities.some((entity) => {
-    if (Number(entity.id) === Number(excludeId)) return false;
+    if (Number(entity.id) === Number(excludeId)) {
+      return false;
+    }
+
+    const entityTitle = entity.Title ?? entity.title ?? "";
+
+    const entityLink = entity.link ?? "";
 
     return (
-      normalizeText(entity.Title) === normalizedTitle &&
-      normalizeText(entity.link || "") === normalizedLink
+      normalizeText(entityTitle) === normalizedTitle &&
+      normalizeText(entityLink) === normalizedLink
     );
   });
 }
@@ -120,22 +130,51 @@ async function reIndex(): Promise<void> {
 
 export async function getWhatsNew(req: Request, res: Response): Promise<void> {
   try {
+    if (!tableClient) {
+      const backupItems = await getBackupWhatsNew();
+
+      res.json({
+        success: true,
+        source: "backup",
+        data: backupItems,
+      });
+
+      return;
+    }
+
     const entities = await getAllEntities();
 
     res.json({
       success: true,
+      source: "azure",
       data: formatWhatsNew(entities),
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch whatsnew items",
-      error: (error as Error).message,
-    });
+    try {
+      const backupItems = await getBackupWhatsNew();
+
+      res.json({
+        success: true,
+        source: "backup",
+        data: backupItems,
+      });
+    } catch (backupError) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch whatsnew items",
+        error:
+          backupError instanceof Error
+            ? backupError.message
+            : String(backupError),
+      });
+    }
   }
 }
 
-export async function createWhatsNew(req: Request, res: Response): Promise<void> {
+export async function createWhatsNew(
+  req: Request,
+  res: Response,
+): Promise<void> {
   try {
     const { title, link } = req.body as WhatsNewPayload;
 
@@ -149,12 +188,15 @@ export async function createWhatsNew(req: Request, res: Response): Promise<void>
     const cleanTitle = title!.trim();
     const cleanLink = link?.trim() || "";
 
-    const entities = await getAllEntities();
+    const entities = tableClient
+      ? await getAllEntities()
+      : await getBackupWhatsNew();
 
     if (isDuplicate(entities, cleanTitle, cleanLink)) {
       res.status(409).json({
         success: false,
-        message: "Duplicate item not allowed. Same title and link already exist.",
+        message:
+          "Duplicate item not allowed. Same title and link already exist.",
       });
       return;
     }
@@ -172,12 +214,38 @@ export async function createWhatsNew(req: Request, res: Response): Promise<void>
       UpdatedAt: "",
     };
 
+    if (!tableClient) {
+      const backupItems = await getBackupWhatsNew();
+
+      const backupItem = {
+        id: nextId,
+        title: cleanTitle,
+        link: cleanLink,
+        createdAt: now,
+        updatedAt: "",
+      };
+
+      backupItems.push(backupItem);
+
+      await saveBackupWhatsNew(backupItems);
+
+      res.status(201).json({
+        success: true,
+        source: "backup",
+        message: "WhatsNew item created successfully",
+        data: backupItems,
+      });
+
+      return;
+    }
+
     await tableClient.createEntity(entity);
 
     const updatedEntities = await getAllEntities();
 
     res.status(201).json({
       success: true,
+      source: "azure",
       message: "WhatsNew item created successfully",
       data: formatWhatsNew(updatedEntities),
     });
@@ -190,7 +258,10 @@ export async function createWhatsNew(req: Request, res: Response): Promise<void>
   }
 }
 
-export async function updateWhatsNew(req: Request, res: Response): Promise<void> {
+export async function updateWhatsNew(
+  req: Request,
+  res: Response,
+): Promise<void> {
   try {
     const { id } = req.params;
     const { title, link } = req.body as WhatsNewPayload;
@@ -202,10 +273,13 @@ export async function updateWhatsNew(req: Request, res: Response): Promise<void>
       return;
     }
 
-    const entities = await getAllEntities();
-
+    const entities = tableClient
+      ? await getAllEntities()
+      : await getBackupWhatsNew();
+console.log("PARAM ID:", id);
+console.log("ENTITIES:", entities);
     const existingEntity = entities.find(
-      (entity) => Number(entity.id) === Number(id),
+      (entity: any) => Number(entity.id) === Number(id),
     );
 
     if (!existingEntity) {
@@ -217,7 +291,9 @@ export async function updateWhatsNew(req: Request, res: Response): Promise<void>
     }
 
     const updatedTitle =
-      title !== undefined ? title.trim() : existingEntity.Title;
+      title !== undefined
+        ? title.trim()
+        : (existingEntity.Title ?? existingEntity.title);
 
     const updatedLink =
       link !== undefined ? link.trim() : existingEntity.link || "";
@@ -225,7 +301,8 @@ export async function updateWhatsNew(req: Request, res: Response): Promise<void>
     if (isDuplicate(entities, updatedTitle, updatedLink, id)) {
       res.status(409).json({
         success: false,
-        message: "Duplicate item not allowed. Same title and link already exist.",
+        message:
+          "Duplicate item not allowed. Same title and link already exist.",
       });
       return;
     }
@@ -236,9 +313,38 @@ export async function updateWhatsNew(req: Request, res: Response): Promise<void>
       id: Number(id),
       Title: updatedTitle,
       link: updatedLink,
-      CreatedAt: existingEntity.CreatedAt,
+      CreatedAt:
+        existingEntity.CreatedAt ??
+        existingEntity.createdAt ??
+        new Date().toISOString(),
       UpdatedAt: new Date().toISOString(),
     };
+
+    if (!tableClient) {
+      const backupItems = await getBackupWhatsNew();
+
+      const index = backupItems.findIndex(
+        (item: any) => Number(item.id) === Number(id),
+      );
+
+      backupItems[index] = {
+        ...backupItems[index],
+        title: updatedTitle,
+        link: updatedLink,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await saveBackupWhatsNew(backupItems);
+
+      res.json({
+        success: true,
+        source: "backup",
+        message: "WhatsNew item updated successfully",
+        data: backupItems,
+      });
+
+      return;
+    }
 
     await tableClient.updateEntity(entity, "Replace");
 
@@ -246,6 +352,7 @@ export async function updateWhatsNew(req: Request, res: Response): Promise<void>
 
     res.json({
       success: true,
+      source: "azure",
       message: "WhatsNew item updated successfully",
       data: formatWhatsNew(updatedEntities),
     });
@@ -258,14 +365,18 @@ export async function updateWhatsNew(req: Request, res: Response): Promise<void>
   }
 }
 
-export async function deleteWhatsNew(req: Request, res: Response): Promise<void> {
+export async function deleteWhatsNew(
+  req: Request,
+  res: Response,
+): Promise<void> {
   try {
     const { id } = req.params;
 
-    const entities = await getAllEntities();
-
+    const entities = tableClient
+      ? await getAllEntities()
+      : await getBackupWhatsNew();
     const existingEntity = entities.find(
-      (entity) => Number(entity.id) === Number(id),
+      (entity: any) => Number(entity.id) === Number(id),
     );
 
     if (!existingEntity) {
@@ -276,13 +387,39 @@ export async function deleteWhatsNew(req: Request, res: Response): Promise<void>
       return;
     }
 
+    if (!tableClient) {
+      const backupItems = await getBackupWhatsNew();
+
+      const filteredItems = backupItems.filter(
+        (item: any) => Number(item.id) !== Number(id),
+      );
+
+      const reIndexedItems = filteredItems.map((item: any, index: number) => ({
+        ...item,
+        id: index + 1,
+      }));
+
+      await saveBackupWhatsNew(reIndexedItems);
+
+      res.json({
+        success: true,
+        source: "backup",
+        message: "Deleted successfully and IDs reindexed",
+        data: reIndexedItems,
+      });
+
+      return;
+    }
+
     await tableClient.deleteEntity(PARTITION_KEY, String(id));
+
     await reIndex();
 
     const updatedEntities = await getAllEntities();
 
     res.json({
       success: true,
+      source: "azure",
       message: "Deleted successfully and IDs reindexed",
       data: formatWhatsNew(updatedEntities),
     });

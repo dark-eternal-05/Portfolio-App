@@ -207,7 +207,7 @@ async function getAllEntities(): Promise<ApplicationEntity[]> {
 function hasDuplicateTitle(
   entities: any[],
   title: string,
-  excludeId: string | number | null = null,
+  excludeId: string | string[] | null = null,
 ): boolean {
   return entities.some((entity) => {
     if (Number(entity.id) === Number(excludeId)) return false;
@@ -221,7 +221,7 @@ function hasDuplicateTitle(
 function hasDuplicateLink(
   entities: any[],
   link: string,
-  excludeId: string | number | null = null,
+  excludeId: string | string[] | null = null,
 ): boolean {
   return entities.some((entity) => {
     if (Number(entity.id) === Number(excludeId)) return false;
