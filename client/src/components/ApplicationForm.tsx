@@ -9,6 +9,8 @@ interface Props {
   submitting: boolean;
 }
 
+const DESCRIPTION_LIMIT = 150;
+
 export default function ApplicationForm({
   initial,
   onSubmit,
@@ -18,13 +20,15 @@ export default function ApplicationForm({
   const [form, setForm] = useState({
     title: initial?.title ?? "",
     tagline: initial?.tagline ?? "",
-    category: initial?.category ?? "",
+    categories: initial?.categories ?? [],
     description: initial?.description ?? "",
     link: initial?.link ?? "",
     visibility: initial?.visibility ?? true,
   });
 
-  const DESCRIPTION_LIMIT = 150;
+  const [categoriesText, setCategoriesText] = useState(
+    initial?.categories?.join(", ") ?? "",
+  );
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -45,13 +49,60 @@ export default function ApplicationForm({
     }));
   };
 
+  const handleCategoriesChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const value = e.target.value;
+    setCategoriesText(value);
+
+    const seen = new Set<string>();
+
+    const categories = value
+      .split(",")
+      .map((category) => category.trim())
+      .filter(Boolean)
+      .filter((category) => {
+        const key = category.toLowerCase();
+
+        if (seen.has(key)) return false;
+
+        seen.add(key);
+        return true;
+      });
+
+    setForm((prev) => ({
+      ...prev,
+      categories,
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const seen = new Set<string>();
+
+    const categories = categoriesText
+      .split(",")
+      .map((category) => category.trim())
+      .filter(Boolean)
+      .filter((category) => {
+        const key = category.toLowerCase();
+
+        if (seen.has(key)) return false;
+
+        seen.add(key);
+        return true;
+      });
+
+    if (categories.length === 0) {
+      toast.error("At least one category is required");
+      return;
+    }
 
     await onSubmit({
       title: form.title.trim(),
       tagline: form.tagline.trim(),
-      category: form.category.trim(),
+      categories,
       description: form.description.trim(),
       link: form.link.trim(),
       visibility: form.visibility,
@@ -61,9 +112,13 @@ export default function ApplicationForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <label className="mb-1 block text-sm font-medium" style={{ color: "var(--text-main)" }}>
+        <label
+          className="mb-1 block text-sm font-medium"
+          style={{ color: "var(--text-main)" }}
+        >
           Application Title *
         </label>
+
         <input
           name="title"
           value={form.title}
@@ -75,9 +130,13 @@ export default function ApplicationForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium" style={{ color: "var(--text-main)" }}>
+        <label
+          className="mb-1 block text-sm font-medium"
+          style={{ color: "var(--text-main)" }}
+        >
           Tagline *
         </label>
+
         <input
           name="tagline"
           value={form.tagline}
@@ -89,9 +148,13 @@ export default function ApplicationForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium" style={{ color: "var(--text-main)" }}>
+        <label
+          className="mb-1 block text-sm font-medium"
+          style={{ color: "var(--text-main)" }}
+        >
           URL *
         </label>
+
         <input
           name="link"
           value={form.link}
@@ -103,9 +166,13 @@ export default function ApplicationForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium" style={{ color: "var(--text-main)" }}>
+        <label
+          className="mb-1 block text-sm font-medium"
+          style={{ color: "var(--text-main)" }}
+        >
           Description *
         </label>
+
         <textarea
           name="description"
           value={form.description}
@@ -132,15 +199,19 @@ export default function ApplicationForm({
 
       <div className="grid grid-cols-[1fr_auto] items-end gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium" style={{ color: "var(--text-main)" }}>
-            Category *
+          <label
+            className="mb-1 block text-sm font-medium"
+            style={{ color: "var(--text-main)" }}
+          >
+            Categories *
           </label>
+
           <input
-            name="category"
-            value={form.category}
-            onChange={handleChange}
+            name="categories"
+            value={categoriesText}
+            onChange={handleCategoriesChange}
             required
-            placeholder="e.g. Automation"
+            placeholder="Analytics, Automation, Security"
             className="input-field"
           />
         </div>
@@ -178,7 +249,11 @@ export default function ApplicationForm({
         </button>
 
         <button type="submit" disabled={submitting} className="btn-primary">
-          {submitting ? "Saving..." : initial ? "Save Changes" : "Add Application"}
+          {submitting
+            ? "Saving..."
+            : initial
+              ? "Save Changes"
+              : "Add Application"}
         </button>
       </div>
     </form>
