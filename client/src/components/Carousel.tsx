@@ -470,7 +470,9 @@ export default function Carousel({
           category: product.category,
           description: product.description,
           color: getCardColor(index),
-          url: product.link,
+          link: product.link,
+          tagline: product.tagline,
+          visibility: product.visibility
         },
         isDark,
       ),
