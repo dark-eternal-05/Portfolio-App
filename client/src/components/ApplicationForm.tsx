@@ -35,10 +35,10 @@ export default function ApplicationForm({
 
     return value
       .split(",")
-      .map((category) => category.trim())
+      .map((categories) => categories.trim())
       .filter(Boolean)
-      .filter((category) => {
-        const key = category.toLowerCase();
+      .filter((categories) => {
+        const key = categories.toLowerCase();
 
         if (seen.has(key)) return false;
 

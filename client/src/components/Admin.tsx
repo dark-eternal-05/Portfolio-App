@@ -4,7 +4,7 @@ import DisclaimerFooter from "./DisclaimerFooter";
 import Sidebar from "./Sidebar";
 import FloralBackground from "./FloralBackground";
 import { LayoutGrid, Sparkles } from "lucide-react";
-import { ActiveTab } from "../types/index";
+import { ActiveTab } from "../types";
 import ApplicationsTab from "./ApplicationsTab";
 import WhatsNewTab from "./WhatsNewTab";
 

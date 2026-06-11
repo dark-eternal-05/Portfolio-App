@@ -39,8 +39,8 @@ export default function ApplicationsTab() {
     setSubmitting(true);
 
     try {
-      const created = await createApplication(data);
-      setApps((prev) => [created, ...prev]);
+      const updatedTable = await createApplication(data);
+      setApps(updatedTable);
       setShowAddModal(false);
       toast.success("Application added");
     } catch {
@@ -73,8 +73,8 @@ export default function ApplicationsTab() {
     setSubmitting(true);
 
     try {
-      await deleteApplication(String(deleteTarget.id));
-      setApps((prev) => prev.filter((a) => a.id !== deleteTarget.id));
+      const updatedTable = await deleteApplication(String(deleteTarget.id));
+      setApps(updatedTable);
       setDeleteTarget(null);
       toast.success("Application deleted");
     } catch {
@@ -129,17 +129,10 @@ export default function ApplicationsTab() {
           </div>
         ) : (apps?.length || 0) === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
-            <p
-              className="text-sm font-medium"
-              style={{ color: "var(--text-main)" }}
-            >
+            <p className="text-sm font-medium" style={{ color: "var(--text-main)" }}>
               No applications yet
             </p>
-
-            <p
-              className="mt-1 text-xs"
-              style={{ color: "var(--text-secondary)" }}
-            >
+            <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
               Click "Add Application" to get started
             </p>
           </div>
@@ -156,27 +149,21 @@ export default function ApplicationsTab() {
                 <th className="w-12 px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   #
                 </th>
-
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   Name
                 </th>
-
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   Categories
                 </th>
-
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   Link
                 </th>
-
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   Description
                 </th>
-
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   Visibility
                 </th>
-
                 <th className="w-[116px] min-w-[116px] px-2 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   Actions
                 </th>
@@ -194,12 +181,8 @@ export default function ApplicationsTab() {
                     {idx + 1}
                   </td>
 
-                  <td
-                    className="px-4 py-3.5"
-                    style={{ color: "var(--text-main)" }}
-                  >
+                  <td className="px-4 py-3.5" style={{ color: "var(--text-main)" }}>
                     <div className="font-medium">{app.title}</div>
-
                     <div
                       className="mt-1 text-xs"
                       style={{ color: "var(--text-secondary)" }}
@@ -210,14 +193,16 @@ export default function ApplicationsTab() {
 
                   <td className="px-4 py-3.5">
                     <div className="flex max-w-[220px] flex-wrap gap-1">
-                      {(app.category || []).map((category) => (
+                      {(app.categories || []).map((category) => (
                         <span
                           key={category}
                           className="rounded-full px-2 py-1 text-xs font-medium"
                           style={{
                             background: `${app.color || "var(--accent)"}20`,
                             color: app.color || "var(--accent)",
-                            border: `1px solid ${app.color || "var(--accent)"}40`,
+                            border: `1px solid ${
+                              app.color || "var(--accent)"
+                            }40`,
                           }}
                         >
                           {category}
@@ -252,11 +237,7 @@ export default function ApplicationsTab() {
                       <button
                         onClick={() => toggleVisibility(app)}
                         className="btn-ghost"
-                        title={
-                          app.visibility
-                            ? "Hide application"
-                            : "Show application"
-                        }
+                        title={app.visibility ? "Hide application" : "Show application"}
                       >
                         {app.visibility ? (
                           <Eye className="h-4 w-4" />

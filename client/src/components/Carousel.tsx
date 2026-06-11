@@ -45,7 +45,7 @@ function createCardImage(product: Product, isDark: boolean): string {
   const borderOpacity = isDark ? "0.45" : "0.8";
   const buttonOpacity = isDark ? "0.16" : "0.1";
   const cardColor = product.color || "#00D4FF";
-  const categoryText = product.category?.join(", ") || "";
+  const categoryText = product.categories?.join(", ") || "";
 
   const svg = `
     <svg width="900" height="560" xmlns="http://www.w3.org/2000/svg">
@@ -139,7 +139,7 @@ class GalleryApp {
     this.renderer = new Renderer({
       alpha: true,
       antialias: true,
-      dpr: Math.min((window as any).devicePixelRatio || 1, 2),
+      dpr: Math.min(window.devicePixelRatio || 1, 2),
     });
 
     this.gl = this.renderer.gl;
@@ -238,7 +238,7 @@ class GalleryApp {
       aspect: this.screen.width / this.screen.height,
     });
 
-    const fov = ((this.camera as any).fov * Math.PI) / 180;
+    const fov = (this.camera.fov * Math.PI) / 180;
     const height = 2 * Math.tan(fov / 2) * this.camera.position.z;
     const width = height * this.camera.aspect;
 
@@ -361,7 +361,6 @@ class GalleryApp {
         media.mesh.rotation.z = 0;
       } else {
         const radius = (halfViewport * halfViewport + bend * bend) / (2 * bend);
-
         const effectiveX = Math.min(Math.abs(x), halfViewport);
         const arc = radius - Math.sqrt(radius * radius - effectiveX * effectiveX);
 
@@ -400,11 +399,7 @@ class GalleryApp {
   }
 }
 
-export default function Carousel({
-  theme,
-}: {
-  theme: string;
-}): React.JSX.Element {
+export default function Carousel({ theme }: { theme: string }): React.JSX.Element {
   const [products, setProducts] = useState<Application[]>([]);
   const [selectedFilter, setSelectedFilter] = useState("All");
   const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
@@ -432,7 +427,7 @@ export default function Carousel({
     const categories: string[] = [];
 
     products.forEach((app) => {
-      (app.category || []).forEach((category) => {
+      (app.categories || []).forEach((category) => {
         const cleaned = category.trim();
         const key = cleaned.toLowerCase();
 
@@ -447,16 +442,13 @@ export default function Carousel({
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    if (selectedFilter === "All") {
-      return products;
-    }
+    if (selectedFilter === "All") return products;
 
     const selectedKey = selectedFilter.trim().toLowerCase();
 
     return products.filter((product) =>
-      (product.category || []).some(
-        (category) =>
-          category.trim().toLowerCase() === selectedKey,
+      (product.categories || []).some(
+        (category) => category.trim().toLowerCase() === selectedKey,
       ),
     );
   }, [products, selectedFilter]);
@@ -465,14 +457,8 @@ export default function Carousel({
     return filteredProducts.map((product, index) => ({
       image: createCardImage(
         {
-          id: product.title.charAt(0).toUpperCase(),
-          title: product.title,
-          category: product.category,
-          description: product.description,
+          ...product,
           color: getCardColor(index),
-          link: product.link,
-          tagline: product.tagline,
-          visibility: product.visibility
         },
         isDark,
       ),
@@ -502,10 +488,7 @@ export default function Carousel({
       galleryAppRef.current = null;
     };
   }, [galleryItems]);
-  console.log("Products:", products.length);
-  console.log("Filtered:", filteredProducts.length);
-  console.log("Gallery:", galleryItems.length);
-  console.log(filteredProducts);
+
   return (
     <div className="relative w-full">
       <div className="relative z-50 mx-auto flex max-w-7xl justify-end px-2 pb-3 md:px-8 md:pb-0">

@@ -396,7 +396,7 @@ export async function createApplication(
         success: true,
         source: "backup",
         message: "Application created successfully",
-        data: backupApp,
+        data: formatApplications(backupApps),
       });
 
       return;
@@ -418,11 +418,13 @@ export async function createApplication(
 
     await tableClient.createEntity(entity);
 
+    const updatedEntities = await getAllEntities();
+
     res.status(201).json({
       success: true,
       source: "azure",
       message: "Application created successfully",
-      data: formatApplications([entity])[0],
+      data: formatApplications(updatedEntities),
     });
   } catch (error) {
     console.error("CREATE APPLICATION ERROR:", error);
@@ -619,8 +621,7 @@ export async function deleteApplication(
       const reIndexedApps = backupApps
         .filter((app: any) => Number(app.id) !== Number(id))
         .map((app: any, index: number) => ({
-          ...app,
-          id: index + 1,
+          ...app, id: index + 1,
         }));
 
       await saveBackupApplications(reIndexedApps);

@@ -279,9 +279,12 @@ export async function deleteWhatsNew(req: Request, res: Response): Promise<void>
     await tableClient.deleteEntity(PARTITION_KEY, String(id));
     await reIndex();
 
+    const updatedEntities = await getAllEntities();
+
     res.json({
       success: true,
       message: "Deleted successfully and IDs reindexed",
+      data: formatWhatsNew(updatedEntities),
     });
   } catch (error) {
     res.status(500).json({
